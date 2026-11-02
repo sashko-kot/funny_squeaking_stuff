@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript Interactive Climax Simulation</title>
+    <style>
+        :root {
+            --bg: #dff8ff;
+            --bg-deep: #aee4ff;
+            --primary: #75d6ff;
+            --secondary: #ff9bb5;
+            --panel: rgba(19, 48, 68, 0.45);
+            --text: #10354d;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: radial-gradient(circle at top, #f5fdff 0%, var(--bg-deep) 30%, #8ed7ff 100%);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text);
+            user-select: none;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 30px;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            color: rgba(15, 54, 72, 0.7);
+            text-shadow: 0 0 12px rgba(141, 214, 255, 0.5);
+            font-weight: 600;
+        }
+
+        .controls-hint {
+            background: rgba(255, 255, 255, 0.25);
+            color: var(--text);
+            padding: 15px 25px;
+            border-radius: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(17, 61, 82, 0.15);
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+            text-align: center;
+            animation: pulseHint 2s infinite ease-in-out;
+            pointer-events: auto;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(50, 120, 150, 0.15);
+        }
+
+        .hud {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #144a62;
+        }
+
+        .progress-box {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            box-shadow: 0 0 20px rgba(255, 155, 181, 0.6);
+            transition: width 0.1s linear;
+        }
+
+        .sound-credit {
+            margin: 0;
+            font-size: 0.65rem;
+            text-align: right;
+            color: rgba(20, 74, 98, 0.75);
+        }
+
+        .sound-credit a {
+            color: inherit;
+            pointer-events: auto;
+        }
+
+        @keyframes pulseHint {
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 0.8;
+                box-shadow: 0 0 0px rgba(255, 0, 85, 0);
+            }
+
+            50% {
+                transform: scale(1.03);
+                opacity: 1;
+                box-shadow: 0 0 20px rgba(255, 0, 85, 0.2);
+            }
+        }
+
+        #flash {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            z-index: 3;
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="canvas"></canvas>
+    <div id="flash"></div>
+
+    <div class="ui-layer">
+        <h1>Guinea Pig Energy Drift</h1>
+
+        <div class="hud">
+            <div class="metric">
+                <span>Свинячий визг: <b id="speedVal">0%</b></span>
+                <span>Желание откусить морковь: <b id="climaxVal">0%</b></span>
+            </div>
+            <div class="progress-box">
+                <div class="progress-fill" id="progressBar"></div>
+            </div>
+            <p class="sound-credit">
+                Звук морской свинки: <a href="Guinea Pig Sound - The SOund ButtOn.mp3" target="_blank" rel="noopener noreferrer">kessir (CC BY 3.0)</a><br>
+                Звук взрыва: <a href="https://commons.wikimedia.org/wiki/File:Explosion_10.ogg" target="_blank" rel="noopener noreferrer">tcpp (общественное достояние)</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const flash = document.getElementById('flash');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        let frictionEnergy = 0;
+        let climaxProgress = 0;
+        let isClimaxing = false;
+        let audioContext = null;
+        let squeakAudioEnabled = false;
+        let nextSqueakTime = 0;
+        const squeakMp3Url = encodeURI('Guinea Pig Sound - The SOund ButtOn.mp3');
+        const squeakAudio = new Audio(squeakMp3Url);
+        squeakAudio.preload = 'auto';
+        squeakAudio.volume = 1;
+        const explosionAudio = new Audio('https://upload.wikimedia.org/wikipedia/commons/transcoded/3/37/Explosion_10.ogg/Explosion_10.ogg.mp3');
+        explosionAudio.preload = 'auto';
+        explosionAudio.volume = 0.8;
+
+        function fallbackSqueakTone() {
+            if (!audioContext || audioContext.state !== 'running') return;
+
+            const now = audioContext.currentTime;
+            const oscillator = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(1100, now);
+            oscillator.frequency.exponentialRampToValueAtTime(150, now + 0.22);
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.18, now + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+
+            oscillator.connect(gain);
+            gain.connect(audioContext.destination);
+            oscillator.start(now);
+            oscillator.stop(now + 0.24);
+        }
+
+        function enableAudio() {
+            if (!audioContext && window.AudioContext) {
+                audioContext = new AudioContext();
+            }
+
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume().catch((error) => {
+                    console.error('Unable to start sound:', error);
+                });
+            }
+
+            if (!squeakAudioEnabled) {
+                squeakAudioEnabled = true;
+                playSqueak();
+            }
+        }
+
+        function playSqueak() {
+            if (!squeakAudioEnabled) return;
+
+            if (!squeakAudio.paused) return;
+
+            squeakAudio.currentTime = 0;
+            squeakAudio.play().then(() => {
+                nextSqueakTime = performance.now() + 2600 + Math.random() * 2400;
+            }).catch((error) => {
+                console.warn('Guinea pig recording did not start, using fallback tone:', error);
+                fallbackSqueakTone();
+                nextSqueakTime = performance.now() + 1600 + Math.random() * 1800;
+            });
+        }
+
+        function playGeneratedExplosionSound() {
+            if (!audioContext || audioContext.state !== 'running') return;
+
+            const now = audioContext.currentTime;
+            const bufferSize = Math.floor(audioContext.sampleRate * 0.55);
+            const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+            const noiseData = noiseBuffer.getChannelData(0);
+
+            for (let i = 0; i < bufferSize; i++) {
+                noiseData[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+            }
+
+            const noise = audioContext.createBufferSource();
+            const filter = audioContext.createBiquadFilter();
+            const noiseGain = audioContext.createGain();
+            const bass = audioContext.createOscillator();
+            const bassGain = audioContext.createGain();
+
+            noise.buffer = noiseBuffer;
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1100, now);
+            filter.frequency.exponentialRampToValueAtTime(90, now + 0.5);
+            noiseGain.gain.setValueAtTime(0.0001, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.32, now + 0.015);
+            noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+
+            bass.type = 'sine';
+            bass.frequency.setValueAtTime(115, now);
+            bass.frequency.exponentialRampToValueAtTime(38, now + 0.4);
+            bassGain.gain.setValueAtTime(0.0001, now);
+            bassGain.gain.exponentialRampToValueAtTime(0.38, now + 0.02);
+            bassGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+
+            noise.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(audioContext.destination);
+            bass.connect(bassGain);
+            bassGain.connect(audioContext.destination);
+
+            noise.start(now);
+            noise.stop(now + 0.56);
+            bass.start(now);
+            bass.stop(now + 0.43);
+        }
+
+        function playExplosionSound() {
+            explosionAudio.currentTime = 0;
+            explosionAudio.play().catch((error) => {
+                console.warn('Online explosion sound did not play, using generated sound:', error);
+                playGeneratedExplosionSound();
+            });
+        }
+
+        const pig1Image = new Image();
+        pig1Image.crossOrigin = 'anonymous';
+        pig1Image.src = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT1RVYcIO9bOI3GUfoNZ8rbVJ4oPBc3h0Z6U8VcgN0rMQ&s=10';
+
+        const pig2Image = new Image();
+        pig2Image.crossOrigin = 'anonymous';
+        pig2Image.src = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ2s_EoIgQRkbriN78uvIFCVkVsg_O0ZdtCSselL62P3w&s=10';
+
+        const carrotImage = new Image();
+        carrotImage.crossOrigin = 'anonymous';
+        carrotImage.src = 'https://images.unsplash.com/photo-1447175008436-054170c2e979?auto=format&fit=crop&w=800&q=80';
+
+        const dust = [];
+        const animals = [];
+        let imageFragments = [];
+
+        function makeDust() {
+            for (let i = 0; i < 18; i++) {
+                dust.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    r: Math.random() * 2.5 + 1.4,
+                    vx: (Math.random() - 0.5) * 0.7,
+                    vy: (Math.random() - 0.5) * 0.7,
+                    alpha: Math.random() * 0.6 + 0.2,
+                    color: i % 2 === 0 ? 'rgba(120, 210, 255, ' : 'rgba(255, 164, 188, '
+                });
+            }
+        }
+
+        function resetAnimals() {
+            animals.length = 0;
+            animals.push({
+                side: 'left',
+                x: width * 0.28,
+                y: height * 0.62,
+                targetX: width * 0.28,
+                targetY: height * 0.62,
+                scale: 0.42,
+                angle: 0,
+                img: pig1Image
+            });
+            animals.push({
+                side: 'right',
+                x: width * 0.72,
+                y: height * 0.58,
+                targetX: width * 0.72,
+                targetY: height * 0.58,
+                scale: 0.42,
+                angle: 0,
+                img: pig2Image
+            });
+        }
+
+        const carrot = {
+            x: width * 0.5,
+            y: height * 0.5,
+            targetX: width * 0.5,
+            targetY: height * 0.5,
+            size: 0.34,
+            img: carrotImage,
+            bob: 0,
+            angle: 0
+        };
+
+        function updateDust() {
+            for (const p of dust) {
+                p.x += p.vx + Math.sin(Date.now() * 0.001 + p.x) * 0.2;
+                p.y += p.vy + Math.cos(Date.now() * 0.0015 + p.y) * 0.2;
+
+                if (p.x < 0 || p.x > width) p.vx *= -1;
+                if (p.y < 0 || p.y > height) p.vy *= -1;
+            }
+        }
+
+        function drawDust() {
+            for (const p of dust) {
+                ctx.beginPath();
+                ctx.fillStyle = `${p.color}${p.alpha})`;
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function updateCarrot() {
+            carrot.x += (carrot.targetX - carrot.x) * 0.12;
+            carrot.y += (carrot.targetY - carrot.y) * 0.12;
+            carrot.bob += 0.08;
+            carrot.angle = Math.sin(carrot.bob) * 0.4;
+        }
+
+        function drawCarrot() {
+            if (!carrot.img.complete) return;
+            ctx.save();
+            ctx.translate(carrot.x, carrot.y);
+            ctx.rotate(carrot.angle);
+            ctx.drawImage(carrot.img, -carrot.img.width * carrot.size * 0.5, -carrot.img.height * carrot.size * 0.5, carrot.img.width * carrot.size, carrot.img.height * carrot.size);
+            ctx.restore();
+        }
+
+        function drawAnimal(animal, index) {
+            if (!animal.img.complete) return;
+            const targetX = carrot.x + (index === 0 ? -120 : 120) + Math.sin(Date.now() * 0.003 + index) * 40;
+            const targetY = carrot.y + Math.cos(Date.now() * 0.0032 + index) * 65;
+
+            animal.targetX += (targetX - animal.targetX) * 0.08;
+            animal.targetY += (targetY - animal.targetY) * 0.08;
+
+            animal.x += (animal.targetX - animal.x) * 0.06;
+            animal.y += (animal.targetY - animal.y) * 0.06;
+
+            const dx = animal.targetX - animal.x;
+            animal.angle = Math.atan2(0, dx || 1) * 0.6;
+
+            ctx.save();
+            ctx.translate(animal.x, animal.y);
+            ctx.scale(animal.side === 'left' ? 1 : -1, 1);
+            ctx.rotate(Math.sin(Date.now() * 0.01 + index) * 0.12);
+            ctx.drawImage(animal.img, -animal.img.width * animal.scale * 0.5, -animal.img.height * animal.scale * 0.5, animal.img.width * animal.scale, animal.img.height * animal.scale);
+            ctx.restore();
+        }
+
+        function createImageExplosion(image, x, y, displayWidth, displayHeight) {
+            if (!image.complete || !image.naturalWidth || !image.naturalHeight) return;
+
+            const columns = 4;
+            const rows = 3;
+            const cellWidth = image.naturalWidth / columns;
+            const cellHeight = image.naturalHeight / rows;
+
+            for (let row = 0; row < rows; row++) {
+                for (let column = 0; column < columns; column++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 2 + Math.random() * 6;
+                    imageFragments.push({
+                        image,
+                        sx: column * cellWidth,
+                        sy: row * cellHeight,
+                        sw: cellWidth,
+                        sh: cellHeight,
+                        x: x - displayWidth / 2 + displayWidth * column / columns,
+                        y: y - displayHeight / 2 + displayHeight * row / rows,
+                        width: displayWidth / columns,
+                        height: displayHeight / rows,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        rotation: 0,
+                        spin: (Math.random() - 0.5) * 0.16,
+                        alpha: 1
+                    });
+                }
+            }
+        }
+
+        function startImageExplosion() {
+            imageFragments = [];
+
+            for (const animal of animals) {
+                createImageExplosion(
+                    animal.img,
+                    animal.x,
+                    animal.y,
+                    animal.img.naturalWidth * animal.scale,
+                    animal.img.naturalHeight * animal.scale
+                );
+            }
+
+            createImageExplosion(
+                carrot.img,
+                carrot.x,
+                carrot.y,
+                carrot.img.naturalWidth * carrot.size,
+                carrot.img.naturalHeight * carrot.size
+            );
+        }
+
+        function drawImageExplosion() {
+            for (let i = imageFragments.length - 1; i >= 0; i--) {
+                const fragment = imageFragments[i];
+                fragment.x += fragment.vx;
+                fragment.y += fragment.vy;
+                fragment.vy += 0.08;
+                fragment.rotation += fragment.spin;
+                fragment.alpha -= 0.012;
+
+                if (fragment.alpha <= 0) {
+                    imageFragments.splice(i, 1);
+                    continue;
+                }
+
+                ctx.save();
+                ctx.globalAlpha = fragment.alpha;
+                ctx.translate(fragment.x + fragment.width / 2, fragment.y + fragment.height / 2);
+                ctx.rotate(fragment.rotation);
+                ctx.drawImage(
+                    fragment.image,
+                    fragment.sx, fragment.sy, fragment.sw, fragment.sh,
+                    -fragment.width / 2, -fragment.height / 2, fragment.width, fragment.height
+                );
+                ctx.restore();
+            }
+        }
+
+        let lastX = 0;
+        let lastY = 0;
+
+        window.addEventListener('mousemove', (e) => {
+            const dist = Math.hypot(e.clientX - lastX, e.clientY - lastY);
+            if (dist > 5 && dist < 300) {
+                frictionEnergy += dist * 0.003;
+            }
+            lastX = e.clientX;
+            lastY = e.clientY;
+            carrot.targetX = e.clientX;
+            carrot.targetY = e.clientY;
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            if (touch) {
+                carrot.targetX = touch.clientX;
+                carrot.targetY = touch.clientY;
+            }
+        }, { passive: true });
+
+        const registerAction = () => {
+            enableAudio();
+            frictionEnergy += 1.5;
+        };
+
+        window.addEventListener('click', registerAction);
+        window.addEventListener('touchstart', registerAction);
+
+        function loop() {
+            ctx.fillStyle = `rgba(222, 245, 255, ${isClimaxing ? 0.35 : 0.18})`;
+            ctx.fillRect(0, 0, width, height);
+
+            if (!isClimaxing) {
+                frictionEnergy *= 0.96;
+                if (frictionEnergy > 0.5) {
+                    climaxProgress += frictionEnergy * 0.012;
+                } else {
+                    climaxProgress -= 0.15;
+                }
+                climaxProgress = Math.max(0, Math.min(100, climaxProgress));
+            }
+
+            document.getElementById('speedVal').innerText = Math.round(Math.min(100, frictionEnergy * 20)) + '%';
+            document.getElementById('climaxVal').innerText = Math.round(climaxProgress) + '%';
+            document.getElementById('progressBar').style.width = climaxProgress + '%';
+
+            updateDust();
+            updateCarrot();
+
+            if (isClimaxing) {
+                drawImageExplosion();
+            } else {
+                for (let i = 0; i < animals.length; i++) {
+                    drawAnimal(animals[i], i);
+                }
+                drawCarrot();
+            }
+
+            drawDust();
+
+            if (climaxProgress >= 100 && !isClimaxing) {
+                isClimaxing = true;
+                playExplosionSound();
+                startImageExplosion();
+                flash.style.opacity = 1;
+
+                setTimeout(() => {
+                    const fade = setInterval(() => {
+                        flash.style.opacity = Math.max(0, Number(flash.style.opacity) - 0.05).toString();
+                        if (Number(flash.style.opacity) <= 0) {
+                            clearInterval(fade);
+                        }
+                    }, 30);
+                }, 100);
+
+                setTimeout(() => {
+                    isClimaxing = false;
+                    climaxProgress = 0;
+                    frictionEnergy = 0;
+                    imageFragments = [];
+                    carrot.x = width * 0.5;
+                    carrot.y = height * 0.5;
+                    carrot.targetX = width * 0.5;
+                    carrot.targetY = height * 0.5;
+                }, 2200);
+            }
+
+            const now = performance.now();
+            if (!isClimaxing && squeakAudioEnabled && now >= nextSqueakTime) {
+                playSqueak();
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        makeDust();
+        resetAnimals();
+        loop();
+    </script>
+</body>
+
+</html>
